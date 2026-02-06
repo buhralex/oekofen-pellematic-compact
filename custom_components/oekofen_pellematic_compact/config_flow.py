@@ -208,10 +208,10 @@ class OekofenPellematicCompactConfigFlow(config_entries.ConfigFlow, domain=DOMAI
             # Detect optimal charset if requested
             if detect_charset:
                 suggested_charset = detect_charset_from_response(raw_data)
-                str_response = raw_data.decode(suggested_charset, 'ignore')
+                str_response = raw_data.decode(suggested_charset, 'replace')
             else:
                 suggested_charset = None
-                str_response = raw_data.decode(self._charset, 'ignore')
+                str_response = raw_data.decode(self._charset, 'replace')
             
             # Apply hotfix for invalid JSON
             str_response = str_response.replace("L_statetext:", 'L_statetext":')

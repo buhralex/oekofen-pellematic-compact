@@ -506,11 +506,11 @@ class PellematicHub:
 
 def fetch_data(url: str, charset: str = DEFAULT_CHARSET) -> Dict[str, Any]:
     """Get data from API.
-    
+
     Args:
         url: API endpoint URL
         charset: Character encoding for response
-        
+
     Returns:
         Parsed JSON data from API
     """
@@ -520,16 +520,26 @@ def fetch_data(url: str, charset: str = DEFAULT_CHARSET) -> Dict[str, Any]:
     # Ensure URL ends with '?' for full API response
     if not url.endswith('?'):
         url += '?'
-        
+
     req = urllib.request.Request(url)
     response = None
     str_response = None
+    raw_data = None
 
     try:
         response = urllib.request.urlopen(
             req, timeout=3
         )  # Ökofen API recommended timeout is 2.5s
-        str_response = response.read().decode(charset, "ignore")
+        raw_data = response.read()
+
+        # Try UTF-8 first (modern Ökofen firmware), fall back to configured charset
+        # This fixes issues where UTF-8 data (Ö, Ä, Ü) is wrongly decoded as ISO-8859-1 (Ã, Ã„, Ãœ)
+        try:
+            str_response = raw_data.decode('utf-8')
+        except UnicodeDecodeError:
+            # Not UTF-8, use configured charset
+            str_response = raw_data.decode(charset, "replace")
+            _LOGGER.debug("Decoded API response using fallback charset: %s", charset)
     finally:
         if response is not None:
             response.close()
@@ -558,14 +568,14 @@ def fetch_data(url: str, charset: str = DEFAULT_CHARSET) -> Dict[str, Any]:
 
 def send_data(url: str, charset: str = DEFAULT_CHARSET) -> str:
     """Send data to API.
-    
+
     Args:
         url: API endpoint URL
         charset: Character encoding for response
-        
+
     Returns:
         Response text from API
-        
+
     Raises:
         urllib.error.HTTPError: When API returns an error (e.g., 401 Unauthorized)
         Exception: For other network or communication errors
@@ -576,11 +586,19 @@ def send_data(url: str, charset: str = DEFAULT_CHARSET) -> str:
     req = urllib.request.Request(url)
     response = None
     str_response = None
+    raw_data = None
     try:
         response = urllib.request.urlopen(
             req, timeout=3
         )  # Ökofen API recommended timeout is 2.5s
-        str_response = response.read().decode(charset, "ignore")
+        raw_data = response.read()
+
+        # Try UTF-8 first (modern Ökofen firmware), fall back to configured charset
+        try:
+            str_response = raw_data.decode('utf-8')
+        except UnicodeDecodeError:
+            # Not UTF-8, use configured charset
+            str_response = raw_data.decode(charset, "replace")
     except urllib.error.HTTPError as err:
         _LOGGER.error(
             "HTTP Error %s when sending data to %s: %s",
