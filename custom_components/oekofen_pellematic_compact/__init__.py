@@ -536,10 +536,11 @@ def fetch_data(url: str, charset: str = DEFAULT_CHARSET) -> Dict[str, Any]:
         # This fixes issues where UTF-8 data (Ö, Ä, Ü) is wrongly decoded as ISO-8859-1 (Ã, Ã„, Ãœ)
         try:
             str_response = raw_data.decode('utf-8')
-        except UnicodeDecodeError:
+            _LOGGER.info("Successfully decoded API response as UTF-8 (charset config was: %s)", charset)
+        except UnicodeDecodeError as e:
             # Not UTF-8, use configured charset
+            _LOGGER.warning("UTF-8 decode failed (%s), falling back to charset: %s", e, charset)
             str_response = raw_data.decode(charset, "replace")
-            _LOGGER.debug("Decoded API response using fallback charset: %s", charset)
     finally:
         if response is not None:
             response.close()
@@ -596,9 +597,11 @@ def send_data(url: str, charset: str = DEFAULT_CHARSET) -> str:
         # Try UTF-8 first (modern Ökofen firmware), fall back to configured charset
         try:
             str_response = raw_data.decode('utf-8')
+            _LOGGER.debug("Decoded write response as UTF-8")
         except UnicodeDecodeError:
             # Not UTF-8, use configured charset
             str_response = raw_data.decode(charset, "replace")
+            _LOGGER.debug("Decoded write response using charset: %s", charset)
     except urllib.error.HTTPError as err:
         _LOGGER.error(
             "HTTP Error %s when sending data to %s: %s",
