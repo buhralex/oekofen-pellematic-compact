@@ -532,15 +532,29 @@ def fetch_data(url: str, charset: str = DEFAULT_CHARSET) -> Dict[str, Any]:
         )  # Ökofen API recommended timeout is 2.5s
         raw_data = response.read()
 
-        # Try UTF-8 first (modern Ökofen firmware), fall back to configured charset
-        # This fixes issues where UTF-8 data (Ö, Ä, Ü) is wrongly decoded as ISO-8859-1 (Ã, Ã„, Ãœ)
-        try:
-            str_response = raw_data.decode('utf-8')
-            _LOGGER.info("Successfully decoded API response as UTF-8 (charset config was: %s)", charset)
-        except UnicodeDecodeError as e:
-            # Not UTF-8, use configured charset
-            _LOGGER.warning("UTF-8 decode failed (%s), falling back to charset: %s", e, charset)
-            str_response = raw_data.decode(charset, "replace")
+        # Modern Ökofen firmware sends UTF-8, but some firmware versions send mixed encoding
+        # (UTF-8 for text fields, ISO-8859-1 for some value fields like location strings).
+        # Solution: Decode as UTF-8 with 'replace' error handler to handle mixed encodings.
+        # This correctly decodes "Öko Modus" while replacing any invalid UTF-8 bytes with �.
+        str_response = raw_data.decode('utf-8', 'replace')
+
+        # Count replacement characters to detect encoding issues
+        if '\ufffd' in str_response:
+            # Found replacement characters - API has mixed encoding or is pure ISO-8859-1
+            replacement_count = str_response.count('\ufffd')
+
+            # If many replacements (>10), API is probably pure ISO-8859-1, not UTF-8
+            if replacement_count > 10:
+                _LOGGER.warning(
+                    "Found %d replacement characters in UTF-8 decode, retrying with charset: %s",
+                    replacement_count, charset
+                )
+                str_response = raw_data.decode(charset, 'replace')
+            else:
+                _LOGGER.debug(
+                    "Found %d replacement characters in UTF-8 decode (mixed encoding, acceptable)",
+                    replacement_count
+                )
     finally:
         if response is not None:
             response.close()
@@ -594,14 +608,10 @@ def send_data(url: str, charset: str = DEFAULT_CHARSET) -> str:
         )  # Ökofen API recommended timeout is 2.5s
         raw_data = response.read()
 
-        # Try UTF-8 first (modern Ökofen firmware), fall back to configured charset
-        try:
-            str_response = raw_data.decode('utf-8')
-            _LOGGER.debug("Decoded write response as UTF-8")
-        except UnicodeDecodeError:
-            # Not UTF-8, use configured charset
-            str_response = raw_data.decode(charset, "replace")
-            _LOGGER.debug("Decoded write response using charset: %s", charset)
+        # Decode write response (same logic as fetch_data)
+        str_response = raw_data.decode('utf-8', 'replace')
+        if '\ufffd' in str_response and str_response.count('\ufffd') > 10:
+            str_response = raw_data.decode(charset, 'replace')
     except urllib.error.HTTPError as err:
         _LOGGER.error(
             "HTTP Error %s when sending data to %s: %s",
